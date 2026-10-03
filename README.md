@@ -37,9 +37,9 @@ In the terminal, Claude Code also needs function hooks turned on. Without this, 
 
 Start a new session and type `/mood`.
 
-### Alternative: clone and run the installer (macOS and Linux)
+### Alternative: clone and run the installer
 
-If you'd rather run it from a git checkout you can edit and `git pull`:
+If you'd rather run it from a git checkout you can edit and `git pull`. On macOS and Linux:
 
 ```bash
 git clone https://github.com/alext8900/mood-ring ~/.claude/mods/mood-ring
@@ -48,7 +48,14 @@ git clone https://github.com/alext8900/mood-ring ~/.claude/mods/mood-ring
 
 `install.sh` backs up `~/.claude/settings.json`, adds the folder to `CLAUDE_CODE_PLUGIN_DIRS` and turns on `CLAUDE_CODE_ENABLE_FUNCTION_HOOKS`. It changes nothing else and is safe to run twice. To update, `git pull`; to uninstall, run `install.sh --uninstall` and delete the folder.
 
-On Windows, use the marketplace. To run from a checkout there instead, clone the repo and add its folder to `CLAUDE_CODE_PLUGIN_DIRS` in the `env` block of your settings file, next to `CLAUDE_CODE_ENABLE_FUNCTION_HOOKS`.
+On Windows, in PowerShell:
+
+```powershell
+git clone https://github.com/alext8900/mood-ring $env:USERPROFILE\.claude\mods\mood-ring
+powershell -ExecutionPolicy Bypass -File $env:USERPROFILE\.claude\mods\mood-ring\install.ps1
+```
+
+`install.ps1` does the same as `install.sh` with nothing but the Windows PowerShell that ships with Windows; no Python or bash needed. `-ExecutionPolicy Bypass` applies to that one run only, since Windows blocks local scripts by default. To uninstall, run it again with `-Uninstall` and delete the folder.
 
 Use one install method, not both, or the mod loads twice.
 
