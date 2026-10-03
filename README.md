@@ -10,7 +10,7 @@ An animated Claude face above your Claude Code prompt that reacts to how the tur
 
 It gets grumpier when commands fail, smug when tests finally pass, suspicious when a "quick change" turns into a huge diff, offended when you interrupt it, and nervous when it pushes to main. It also notices how you talk to it.
 
-> **Early access.** mood-ring is built on Claude Code's function hooks, an early-access plugin API. Claude Code only loads it with `CLAUDE_CODE_ENABLE_FUNCTION_HOOKS=1` set, and a future Claude Code release may change the API and break it. Built and tested on Claude Code 2.1.285.
+> **Early access.** mood-ring is built on Claude Code's function hooks, an early-access plugin API. The Claude Code desktop app loads it as is; the terminal CLI needs `CLAUDE_CODE_ENABLE_FUNCTION_HOOKS=1` (see below). A future Claude Code release may change the API and break it. Built and tested on Claude Code 2.1.285.
 
 ## Install
 
@@ -23,7 +23,9 @@ In Claude Code:
 /plugin install mood-ring@mood-ring
 ```
 
-Then turn on function hooks by adding this to the `env` block of `~/.claude/settings.json`:
+In the desktop app, that's it: start a new session and type `/mood`.
+
+In the terminal, Claude Code also needs function hooks turned on. Without this, the plugin shows as enabled but never loads. Add it to the `env` block of `~/.claude/settings.json`:
 
 ```json
 {
