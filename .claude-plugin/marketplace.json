@@ -10,7 +10,7 @@
       "name": "mood-ring",
       "source": "./",
       "description": "An animated Claude face above the prompt that gets grumpier or happier with how the turn is going",
-      "version": "1.0.0"
+      "version": "1.0.1"
     }
   ]
 }

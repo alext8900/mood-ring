@@ -14,7 +14,7 @@ It gets grumpier when commands fail, smug when tests finally pass, suspicious wh
 
 ## Install
 
-### Option 1: plugin marketplace
+### Recommended: plugin marketplace (macOS, Linux and Windows)
 
 In Claude Code:
 
@@ -25,7 +25,7 @@ In Claude Code:
 
 In the desktop app, that's it: start a new session and type `/mood`.
 
-In the terminal, Claude Code also needs function hooks turned on. Without this, the plugin shows as enabled but never loads. Add it to the `env` block of `~/.claude/settings.json`:
+In the terminal, Claude Code also needs function hooks turned on. Without this, the plugin shows as enabled but never loads. Add it to the `env` block of your Claude Code settings file, `~/.claude/settings.json` (on Windows, `%USERPROFILE%\.claude\settings.json`):
 
 ```json
 {
@@ -37,7 +37,9 @@ In the terminal, Claude Code also needs function hooks turned on. Without this, 
 
 Start a new session and type `/mood`.
 
-### Option 2: clone and run the installer
+### Alternative: clone and run the installer (macOS and Linux)
+
+If you'd rather run it from a git checkout you can edit and `git pull`:
 
 ```bash
 git clone https://github.com/alext8900/mood-ring ~/.claude/mods/mood-ring
@@ -46,7 +48,9 @@ git clone https://github.com/alext8900/mood-ring ~/.claude/mods/mood-ring
 
 `install.sh` backs up `~/.claude/settings.json`, adds the folder to `CLAUDE_CODE_PLUGIN_DIRS` and turns on `CLAUDE_CODE_ENABLE_FUNCTION_HOOKS`. It changes nothing else and is safe to run twice. To update, `git pull`; to uninstall, run `install.sh --uninstall` and delete the folder.
 
-Use one option, not both, or the mod loads twice.
+On Windows, use the marketplace. To run from a checkout there instead, clone the repo and add its folder to `CLAUDE_CODE_PLUGIN_DIRS` in the `env` block of your settings file, next to `CLAUDE_CODE_ENABLE_FUNCTION_HOOKS`.
+
+Use one install method, not both, or the mod loads twice.
 
 ## Commands
 
@@ -74,11 +78,11 @@ There are a few things it doesn't tell you about.
 
 mood-ring watches for commands that delete data:
 
-- **DANGER** shows just before a clearly destructive command runs: `DROP TABLE` through a database client, `dropdb`, `prisma migrate reset`, `TRUNCATE`, `DELETE` or `UPDATE` with no `WHERE`, `terraform destroy`, `fly destroy`, `rm -rf` on `/`, `~` or `.`, and similar.
+- **DANGER** shows just before a clearly destructive command runs: `DROP TABLE` through a database client, `dropdb`, `prisma migrate reset`, `TRUNCATE`, `DELETE` or `UPDATE` with no `WHERE`, `terraform destroy`, `fly destroy`, `rm -rf` on `/`, `~` or `.`, and similar. On Windows it reads PowerShell and cmd too: `Remove-Item -Recurse` or `rd /s` on a drive root or your profile folder, `Invoke-Sqlcmd` and `sqlcmd`, `Format-Volume`, Azure deletes.
 - **INCIDENT** follows only if that command succeeded. Denied, failed or cancelled commands get the normal reaction instead. It drops the jokes and says plainly what's happening until the next turn.
 - **CAREFUL** marks risky but not destructive work: deploys, migrations, scoped SQL writes, `sudo`, edits to `.env`, auth or CI files.
 
-Detection is deliberately conservative: build and temp folders (`dist`, `node_modules`, `/tmp`) are ignored, `DELETE … WHERE` is only CAREFUL, and a word that merely appears in a commit message or a `grep` doesn't count.
+Detection is deliberately conservative: build and temp folders (`dist`, `node_modules`, `obj`, `/tmp`, `%TEMP%`) are ignored, `DELETE … WHERE` is only CAREFUL, and a word that merely appears in a commit message or a `grep` doesn't count.
 
 **mood-ring is not a safety tool.** It never blocks, delays or asks about anything. Use Claude Code's permission settings for that.
 

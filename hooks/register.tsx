@@ -831,9 +831,12 @@ function toneOf(text: string): Tone {
   }
 }
 
-// Commit messages and heredocs say anything; read only the command around them.
+// Commit messages, heredocs and PowerShell here-strings say anything; read only the command around them.
 function bareCommand(command: string): string {
-  return command.replace(/<<-?\s*['"]?(\w+)['"]?[\s\S]*?\n\s*\1\b/g, ' ').replace(/(["'])(?:\\.|(?!\1)[\s\S])*\1/g, ' ')
+  return command
+    .replace(/<<-?\s*['"]?(\w+)['"]?[\s\S]*?\n\s*\1\b/g, ' ')
+    .replace(/@(['"])[\s\S]*?\n\1@/g, ' ')
+    .replace(/(["'])(?:\\.|(?!\1)[\s\S])*\1/g, ' ')
 }
 
 const GIT_COMMIT = /\bgit\b[^|;&]*\scommit\b/
@@ -854,6 +857,8 @@ const VALIDATION =
   /\b(test|tests|jest|vitest|pytest|mocha|tsc|eslint|lint|typecheck|type-check|validate(\.sh)?|xcodebuild|cargo (test|check|build|clippy)|go (test|vet|build)|swift (test|build)|make (test|check)|(npm|pnpm|yarn|bun) (run )?(test|build|lint|check))\b/i
 
 const EDIT_TOOLS = new Set(['Edit', 'Write', 'MultiEdit', 'NotebookEdit'])
+// Claude Code's shells: Bash everywhere (Git Bash on Windows), and PowerShell on Windows.
+const SHELL_TOOLS = new Set(['Bash', 'PowerShell'])
 const INSPECT_TOOLS = new Set(['Read', 'Grep', 'Glob', 'LS', 'WebFetch', 'WebSearch'])
 
 function linesIn(s: unknown): number {
@@ -907,11 +912,16 @@ function nearMissOf(
 
 // A program at command position: start of line or after ; & | (, past env assignments and wrappers.
 // A word that merely appears as an argument (grep dropdb .) does not count.
-function cmd(src: string): RegExp {
-  return new RegExp(`(?:^|[;&|(]\\s*)(?:\\w+=\\S*\\s+)*(?:(?:sudo|npx|bunx|exec|time)\\s+)*${src}`)
+// PowerShell cmdlets are case-insensitive, so their patterns take the 'i' flag.
+function cmd(src: string, flags = ''): RegExp {
+  return new RegExp(`(?:^|[;&|(]\\s*)(?:\\w+=\\S*\\s+)*(?:(?:sudo|gsudo|npx|bunx|exec|time)\\s+)*${src}`, flags)
 }
 
-const DB_CLIENT = cmd('(?:psql|pgcli|mysql|mariadb|sqlite3|duckdb|mongosh|mongo|redis-cli|turso\\s+db\\s+shell|prisma\\s+db\\s+execute)\\b')
+const DB_CLIENT_PATTERNS = [
+  cmd('(?:psql|pgcli|mysql|mariadb|sqlite3|duckdb|mongosh|mongo|redis-cli|sqlcmd|turso\\s+db\\s+shell|prisma\\s+db\\s+execute)\\b'),
+  cmd('Invoke-Sqlcmd\\b', 'i'),
+]
+const DB_CLIENT = { test: (bare: string) => DB_CLIENT_PATTERNS.some(re => re.test(bare)) }
 
 // Labeled so DANGER can say what it saw. Read from the full command, since SQL usually sits in quotes;
 // only counted when a database client is the program being run.
@@ -942,34 +952,78 @@ const DESTRUCTIVE_CLI: [string, RegExp][] = [
   ['aws delete', cmd('aws\\s+(?:s3\\s+rb|rds\\s+delete-db-\\w+|dynamodb\\s+delete-table)\\b')],
   ['gcloud delete', cmd('gcloud\\s+(?:sql\\s+(?:instances|databases)\\s+delete|projects\\s+delete)\\b')],
   ['docker volume rm', cmd('docker\\s+(?:volume\\s+(?:rm|prune)|system\\s+prune\\b[^|;&]*--volumes)')],
+  ['dotnet ef database drop', cmd('dotnet\\s+ef\\s+database\\s+drop\\b')],
+  ['az delete', cmd('az\\s+(?:group\\s+delete|sql\\s+(?:db|server)\\s+delete|storage\\s+account\\s+delete|cosmosdb\\s+delete|postgres\\s+(?:flexible-server\\s+)?delete)\\b')],
+  // Windows
+  ['format', cmd('format(?:\\.com)?\\s+[a-z]:', 'i')],
+  ['Format-Volume', cmd('(?:Format-Volume|Clear-Disk|Remove-Partition)\\b', 'i')],
+  ['Remove-AzResourceGroup', cmd('Remove-Az(?:ResourceGroup|SqlDatabase|SqlServer|StorageAccount)\\b', 'i')],
+  ['wsl --unregister', cmd('wsl(?:\\.exe)?\\s+--unregister\\b', 'i')],
 ]
 
 // MCP tools that delete something holding data: a service, volume, bucket or database, not a comment or a domain.
 const INFRA_TOOL = /railway|fly|supabase|neon|planetscale|vercel|render|heroku|aws|gcp|database|postgres/i
 const DELETE_INFRA = /^(delete|destroy|drop)[_-]?(service|volume|bucket|database|db|project|environment|instance|cluster|table)s?$/i
 
-// Paths that exist to be deleted: build output, caches, temp folders.
+// Paths that exist to be deleted: build output, caches, temp folders. Compared with / separators.
 const SAFE_PATH =
-  /^(\/tmp\/|\/private\/tmp\/|\/var\/folders\/|\$TMPDIR|\$\{TMPDIR\})|(^|\/)(dist|build|out|target|node_modules|\.next|\.nuxt|\.turbo|\.cache|cache|\.?tmp|temp|coverage|DerivedData|__pycache__|\.pytest_cache|\.parcel-cache|\.svelte-kit|Pods|\.gradle|\.expo|storybook-static)(\/|$)|\.log$/
+  /^(\/tmp\/|\/private\/tmp\/|\/var\/folders\/|\$TMPDIR|\$\{TMPDIR\})|\/AppData\/Local\/Temp(\/|$)|(^|\/)(dist|build|out|target|obj|\.vs|node_modules|\.next|\.nuxt|\.turbo|\.cache|cache|\.?tmp|temp|coverage|DerivedData|__pycache__|\.pytest_cache|\.parcel-cache|\.svelte-kit|Pods|\.gradle|\.expo|storybook-static)(\/|$)|\.log$/i
 // The root, home, the current folder or its parent, everything, the repo's history.
-const DOOMED_PATH = /^(\/\*?|~\/?\*?|\$HOME\/?\*?|\$\{HOME\}\/?\*?|\.\/?\*?|\.\.\/?\*?|\*|\.git\/?)$|^(~|\$HOME|\$\{HOME\})\/[^/]+\/?$/
-const RM = /(?:^|[;&|(]\s*)(?:sudo\s+)?rm\s+((?:-[\w-]+\s+)+)([^;&|]*)/g
+const DOOMED_PATH = /^(\/\*?|~\/?\*?|\$HOME\/?\*?|\$\{HOME\}\/?\*?|\.\/?\*?|\.\.\/?\*?|\*|\.git\/?)$|^(~|\$HOME|\$\{HOME\})\/[^/]+\/?$|^[a-z]:\/?\*?$/i
+// Recursive deletes in every shell Claude Code uses: rm (Bash, and PowerShell's alias), Remove-Item and its
+// other aliases, and cmd's rd, rmdir, del and erase.
+const DELETE_CMD = /(?:^|[;&|(]\s*)(?:(?:sudo|gsudo)\s+)?(?:cmd(?:\.exe)?\s+\/[ck]\s+)?(rm|remove-item|ri|rmdir|rd|del|erase)(?:\.exe)?\s+([^;&|]*)/gi
 
-// A recursive rm: 'doomed' names a target nobody wants gone, 'unsure' an unknown one, null a safe one.
-function rmVerdict(bare: string): { doomed: string } | 'unsure' | null {
+// One target, with Windows spellings brought to the same form: \ to /, the profile folder to ~, temp to $TMPDIR.
+function pathVerdict(raw: string): 'doomed' | 'unsure' | 'safe' {
+  const t = raw
+    .replace(/\\/g, '/')
+    .replace(/^(\$\{?env:(USERPROFILE|HOMEPATH)\}?|%(USERPROFILE|HOMEPATH)%)/i, '~')
+    .replace(/^(\$\{?env:(TEMP|TMP)\}?|%(TEMP|TMP)%)/i, '$TMPDIR')
+  if (DOOMED_PATH.test(t)) return 'doomed'
+  // A short absolute path is a whole tree: /Users/me, /etc, /c/Users/me, C:/Users/me, C:/Windows.
+  const isAbsolute = t.startsWith('/') || /^[a-z]:\//i.test(t)
+  const depth = t.split('/').filter(Boolean).length
+  if (isAbsolute && depth <= 3 && !SAFE_PATH.test(t)) return 'doomed'
+
+  return SAFE_PATH.test(t) ? 'safe' : 'unsure'
+}
+
+// A recursive delete: 'doomed' names a target nobody wants gone, 'unsure' an unknown one, null a safe one.
+function rmVerdict(bare: string): { doomed: string; program: string } | 'unsure' | null {
   let isUnsure = false
-  for (const m of bare.matchAll(RM)) {
-    const flags = m[1] ?? ''
-    if (!/(^|\s)-\w*[rR]|--recursive/.test(flags)) continue
-    const targets = (m[2] ?? '').trim().split(/\s+/).filter(Boolean)
+  for (const m of bare.matchAll(DELETE_CMD)) {
+    const program = m[1] ?? 'rm'
+    const isCmdStyle = /^(rd|rmdir|del|erase)$/i.test(program)
+    let isRecursive = false
+    let skipNext = false
+    const targets: string[] = []
+    for (const token of (m[2] ?? '').trim().split(/\s+/).filter(Boolean)) {
+      if (skipNext) {
+        skipNext = false
+        continue
+      }
+      if (/^-(include|exclude|filter)$/i.test(token)) {
+        // Their values are patterns, not paths.
+        skipNext = true
+      } else if (token.startsWith('-')) {
+        // -r, -rf, -R (rm); -Recurse, -rec (PowerShell). A long word with an r in it, like -Force, is not one.
+        if (/^--recursive$|^-rec(u(r(s(e)?)?)?)?(:\$true)?$/i.test(token) || (/^-[a-z]{1,4}$/i.test(token) && /r/i.test(token))) {
+          isRecursive = true
+        }
+      } else if (isCmdStyle && /^\/[a-z]$/i.test(token)) {
+        if (/^\/s$/i.test(token)) isRecursive = true
+      } else {
+        targets.push(token)
+      }
+    }
+    if (!isRecursive) continue
     // Targets in quotes were stripped: unknown, so careful rather than alarmed.
     if (targets.length === 0) isUnsure = true
     for (const t of targets) {
-      if (DOOMED_PATH.test(t)) return { doomed: t }
-      // A short absolute path is a whole tree: /Users/me, /etc, /usr/local.
-      const depth = t.split('/').filter(Boolean).length
-      if (t.startsWith('/') && depth <= 3 && !SAFE_PATH.test(t)) return { doomed: t }
-      if (!SAFE_PATH.test(t)) isUnsure = true
+      const verdict = pathVerdict(t)
+      if (verdict === 'doomed') return { doomed: t, program }
+      if (verdict === 'unsure') isUnsure = true
     }
   }
 
@@ -982,7 +1036,7 @@ function destructiveKind(tool: string, command: string | null): string | null {
     const bare = bareCommand(command)
     for (const [what, re] of DESTRUCTIVE_CLI) if (re.test(bare)) return what
     const rm = rmVerdict(bare)
-    if (rm && rm !== 'unsure') return `rm -rf ${rm.doomed}`
+    if (rm && rm !== 'unsure') return rm.program === 'rm' ? `rm -rf ${rm.doomed}` : `${rm.program} ${rm.doomed}`
     if (DB_CLIENT.test(bare)) for (const [what, re] of DESTRUCTIVE_SQL) if (re.test(command)) return what
     return null
   }
@@ -1009,6 +1063,22 @@ const RISKY_COMMANDS: [Risk, RegExp][] = [
     ),
   ],
   ['carefulRoot', cmd('(?:sudo\\s|(?:chmod|chown)\\s+-R\\b|git\\s+clean\\s+-\\w*f|git\\s+push\\b[^|;&]*\\s--delete\\b)')],
+  // Windows
+  [
+    'carefulDeploy',
+    cmd(
+      '(?:az\\s+(?:webapp\\s+(?:deploy|up)|deployment\\s+\\w+\\s+create|functionapp\\s+deployment)|func\\s+azure\\s+functionapp\\s+publish|dotnet\\s+nuget\\s+push|Publish-(?:Module|Script))\\b',
+      'i',
+    ),
+  ],
+  ['carefulMigrate', cmd('dotnet\\s+ef\\s+database\\s+update\\b')],
+  [
+    'carefulRoot',
+    cmd(
+      '(?:gsudo\\b|Start-Process\\b[^|;&]*-Verb\\s+RunAs|Set-ExecutionPolicy\\b|takeown\\b|icacls\\b[^|;&]*/(?:grant|reset|setowner)|reg(?:\\.exe)?\\s+(?:delete|add)\\b|Remove-ItemProperty\\b)',
+      'i',
+    ),
+  ],
 ]
 // SQL that changes data but is scoped (a DELETE with a WHERE, an ALTER): careful, not dangerous.
 const RISKY_SQL = /\b(delete\s+from|update\s+[\w."`]+\s+set|alter\s+table|grant|revoke)\b/i
@@ -1025,7 +1095,7 @@ function riskOf(tool: string, command: string | null, args: Record<string, unkno
     return null
   }
   if (EDIT_TOOLS.has(tool)) {
-    const path = typeof args.file_path === 'string' ? args.file_path : ''
+    const path = typeof args.file_path === 'string' ? args.file_path.replace(/\\/g, '/') : ''
     return SENSITIVE_FILE.test(path) ? 'carefulSecrets' : null
   }
   if (tool.startsWith('mcp__') && RISKY_TOOL.test(tool)) return 'carefulInfra'
@@ -1437,7 +1507,7 @@ let repoPast: RepoMemory | null = null
 let hasMentionedRepo = false
 
 function repoName(key: string): string {
-  return key.split('/').filter(Boolean).pop() ?? 'this repo'
+  return key.split(/[\\/]/).filter(Boolean).pop() ?? 'this repo'
 }
 
 function readRepos(raw: unknown): Record<string, RepoMemory> {
@@ -1746,7 +1816,7 @@ export const register: Register = on => {
     // A subagent's calls are its own business.
     const isSubagent = Boolean((e as { agentId?: string }).agentId)
     const args = e as unknown as Record<string, unknown>
-    const command = e.tool === 'Bash' && typeof args.command === 'string' ? args.command : null
+    const command = SHELL_TOOLS.has(e.tool) && typeof args.command === 'string' ? args.command : null
 
     // Seen before the call runs. The mood ring only reacts: it never blocks or asks.
     let danger: string | null = null

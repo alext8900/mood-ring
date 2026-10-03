@@ -209,3 +209,48 @@ test('cleanup, scoped SQL and mentions are not danger; a doomed rm -rf is', asyn
   expect(await ui.find({ type: 'Text', text: /INCIDENT/ })).toBeDefined()
   await ui.unmount()
 })
+
+test('Windows: PowerShell and cmd deletes are judged like rm -rf', async ($, on) => {
+  mock.clock(on)
+  mock.store(on)
+  on('turn.start', ($, e) => ({ turnId: e.turnId }))
+  const ok = () => ({ result: { stdout: '', stderr: '', interrupted: false }, text: 'ok' }) as never
+  on('tool.call', { tool: 'Bash' }, ok)
+  on('tool.call', { tool: 'PowerShell' } as never, ok)
+
+  const calm = [
+    ['PowerShell', 'Remove-Item -Recurse -Force .\\dist'],
+    ['PowerShell', 'Remove-Item $env:TEMP\\mood-ring-fake -Recurse -Force'],
+    ['PowerShell', 'rd /s /q node_modules'],
+    ['PowerShell', 'cmd /c rmdir /s /q obj'],
+    ['PowerShell', 'Remove-Item -Force C:\\'],
+    ['PowerShell', 'Get-ChildItem -Recurse | Select-String dropdb'],
+    ['PowerShell', 'Invoke-Sqlcmd -Query "DELETE FROM sessions WHERE expired = 1"'],
+    ['Bash', 'rm -rf /c/Users/sam/project/dist'],
+  ]
+  for (const [i, [tool, command]] of calm.entries()) {
+    await $.turn.start({ text: `tidy ${i}`, turnId: `c${i}` })
+    await $.tool.call({ tool, command } as never)
+    const ui = await $.ui.mount({ plugin: 'mood-ring', surface: 'terminal', ...BAND })
+    expect(await ui.find({ type: 'Text', text: /INCIDENT|DANGER/ })).toBeUndefined()
+    await ui.unmount()
+  }
+
+  const doomed = [
+    ['PowerShell', 'Remove-Item -Recurse -Force C:\\'],
+    ['PowerShell', 'rm -r -fo $env:USERPROFILE'],
+    ['PowerShell', 'cmd /c rd /s /q %USERPROFILE%\\Documents'],
+    ['PowerShell', 'Remove-Item C:\\Users\\sam -Recurse'],
+    ['PowerShell', 'Invoke-Sqlcmd -Query "DROP TABLE mood_ring_fake"'],
+    ['PowerShell', 'sqlcmd -Q "TRUNCATE TABLE mood_ring_fake"'],
+    ['PowerShell', 'Format-Volume -DriveLetter Z'],
+    ['Bash', 'rm -rf /c/Users/sam'],
+  ]
+  for (const [i, [tool, command]] of doomed.entries()) {
+    await $.turn.start({ text: `oops ${i}`, turnId: `d${i}` })
+    await $.tool.call({ tool, command } as never)
+    const ui = await $.ui.mount({ plugin: 'mood-ring', surface: 'terminal', ...BAND })
+    expect({ command, incident: (await ui.find({ type: 'Text', text: /INCIDENT/ })) !== undefined }).toEqual({ command, incident: true })
+    await ui.unmount()
+  }
+})

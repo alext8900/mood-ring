@@ -1,6 +1,6 @@
 {
   "name": "mood-ring",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "An animated Claude face above the prompt that gets grumpier or happier with how the turn is going",
   "author": { "name": "Alex Thompson", "url": "https://github.com/alext8900" },
   "homepage": "https://github.com/alext8900/mood-ring",
