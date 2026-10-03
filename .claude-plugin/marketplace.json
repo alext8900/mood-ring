@@ -1,0 +1,16 @@
+{
+  "name": "mood-ring",
+  "owner": {
+    "name": "Alex Thompson",
+    "url": "https://github.com/alext8900"
+  },
+  "description": "mood-ring: a Claude Code mod that puts an animated, opinionated Claude face above your prompt.",
+  "plugins": [
+    {
+      "name": "mood-ring",
+      "source": "./",
+      "description": "An animated Claude face above the prompt that gets grumpier or happier with how the turn is going",
+      "version": "1.0.0"
+    }
+  ]
+}
