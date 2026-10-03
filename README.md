@@ -93,6 +93,19 @@ Detection is deliberately conservative: build and temp folders (`dist`, `node_mo
 
 **mood-ring is not a safety tool.** It never blocks, delays or asks about anything. Use Claude Code's permission settings for that.
 
+## What it hooks
+
+mood-ring only watches and draws; it never changes what Claude Code does.
+
+| Hook | What it does |
+| --- | --- |
+| `session.start` | Registers `/mood` and picks the opening line |
+| `command.run` | Answers `/mood` and its subcommands only; every other command passes through untouched |
+| `prompt.submit` | Reads the tone of your prompt; the prompt itself is passed on unchanged |
+| `turn.start`, `turn.complete` | Start and wrap up the turn's mood |
+| `tool.call` | Reacts to what a tool call did; the call and its result are passed on unchanged, and nothing is blocked |
+| `ui.render` (`AbovePrompt`) | Draws the face above the prompt |
+
 ## Privacy
 
 Everything stays on your machine, in the plugin's local store: lifetime counts, how your last session went, and a short memory of the 25 most recent folders you've used Claude Code in (folder path, date, whether it went badly). `/mood forget` deletes all of it. Nothing is sent anywhere.

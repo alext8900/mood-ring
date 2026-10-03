@@ -1608,7 +1608,7 @@ async function persistTurn($: EngineInterface) {
   if (snapshot) {
     const was = snapshot
     const life = normLifetime(await $.store.get('lifetime'))
-    const add = (now: number, then: number) => Math.max(0, now - then)
+    const add = (now: number, before: number) => Math.max(0, now - before)
     await $.store.set('lifetime', {
       ...life,
       turns: life.turns + 1,
@@ -1759,7 +1759,7 @@ export const register: Register = on => {
     if (arg !== '') {
       return { text: 'Usage: /mood (show/hide) · /mood verbose · /mood recap · /mood reset · /mood forget' }
     }
-    const hidden = await update($, isHidden, h => !h)
+    const hidden = await update($, isHidden, wasHidden => !wasHidden)
 
     return { text: hidden ? 'Mood ring hidden. /mood to bring it back.' : 'Mood ring is back.' }
   })
